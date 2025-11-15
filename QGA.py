@@ -17,7 +17,7 @@ class QGA:
         pop_mutation_rate=0.05,
         mutation_rate=0.01,
         kernel="rbf",
-        verbose=True,
+        verbose_logging=True,
         output_file="output.dat",
     ):
         self.X_train = X_train
@@ -30,7 +30,7 @@ class QGA:
         self.POP_MUTATION_RATE = pop_mutation_rate
         self.MUTATION_RATE = mutation_rate
         self.kernel = kernel
-        self.verbose = verbose
+        self.verbose_logging = verbose_logging
         self.output_file = output_file
 
         self.pop_size = self.N + 1
@@ -49,6 +49,8 @@ class QGA:
         self.best_chrom = np.empty([self.generation_max], dtype=int)
 
         self.generation = 0
+
+        self.history = []
 
         with open(self.output_file, "w"):
             pass
@@ -104,7 +106,7 @@ class QGA:
             self.fitness[i] = np.mean(scores) * 100
             fitness_total += self.fitness[i]
 
-            if self.verbose:
+            if self.verbose_logging:
                 print(
                     f"[Gen {self.generation}] Chromosome {i}:"
                     f" C={C:.5f}, gamma={gamma:.5f}, fitness={self.fitness[i]:.2f}"
@@ -114,9 +116,18 @@ class QGA:
         best_idx = np.argmax(self.fitness[1:self.N + 1]) + 1
         self.best_chrom[self.generation] = best_idx
 
-        if self.verbose:
+        if self.verbose_logging:
             print(f"→ Generation {self.generation}: mean={avg_fitness:.3f}, best={self.fitness[best_idx]:.3f}\n")
 
+        self.history.append(
+            {
+                'generation': self.generation,
+                'mean_fitness': avg_fitness,
+                'best_fitness': self.fitness[best_idx],
+                'best_index': best_idx,
+            }
+        )
+        
         with open(self.output_file, "a") as f:
             f.write(f"{self.generation} {avg_fitness}\n")
 
@@ -145,7 +156,7 @@ class QGA:
                     self.nqpv[i, j, 1] = rot[1, 0] * self.qpv[i, j, 0] + rot[1, 1] * self.qpv[i, j, 1]
 
                     self.qpv[i, j, 0] = round(self.nqpv[i, j, 0], 2)
-                    self.qpv[i, j, 1] = round(1 - self.qpv[i, j, 0], 2)
+                    self.qpv[i, j, 1] = round(1 - self.nqpv[i, j, 0], 2)
 
     def mutate(self):
         for i in range(1, self.pop_size):
@@ -183,7 +194,7 @@ class QGA:
         self.evaluate_fitness()
 
         while self.generation < self.generation_max - 1:
-            if self.verbose:
+            if self.verbose_logging:
                 print(f"=== GENERATION {self.generation+1} ===")
 
             self.rotate()
