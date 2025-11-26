@@ -2,6 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
+from scipy.ndimage import zoom
 
 class DopNetLoader:
     def __init__(self, root_dir):
@@ -38,6 +39,27 @@ class DopNetLoader:
             gestures.append(reps)
 
         self.data[person] = gestures
+
+    def _normalize_shape(self, target_shape=(256, 256)):
+        new_data = {}
+
+        for person, gestures in self.data.items():
+            new_gestures = []
+            for reps in gestures:
+                new_reps = []
+                for spec in reps:
+                    spec_mag = np.abs(spec)
+
+                    zoom_h = target_shape[0] / spec_mag.shape[0]
+                    zoom_w = target_shape[1] / spec_mag.shape[1]
+
+                    spec_norm = zoom(spec_mag, (zoom_h, zoom_w))
+                    new_reps.append(spec_norm)
+
+                new_gestures.append(new_reps)
+            new_data[person] = new_gestures
+
+        self.data = new_data
 
     # ---------------------------
     #  PUBLIC API
