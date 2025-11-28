@@ -4,6 +4,9 @@ import matplotlib.pyplot as plt
 from scipy.io import loadmat
 from scipy.ndimage import zoom
 
+GESTURE_NAMES = ["Wave", "Pinch", "Swipe", "Click"]
+
+
 class DopNetLoader:
     def __init__(self, root_dir):
         self.root_dir = root_dir
@@ -22,7 +25,9 @@ class DopNetLoader:
 
         print('\n=== SUMMARY ===')
         for person, gestures in self.data.items():
-            print(f"Person {person}: {len(gestures)} gestures × {len(gestures[0])} repetitions")
+            print(f'Person: {person}:')
+            for i, reps in enumerate(gestures):
+                print(f'  Gesture {i}: {len(reps)} samples')
 
     def _load_single_file(self, path):
         d = loadmat(path, struct_as_record=False, squeeze_me=False)
@@ -75,6 +80,8 @@ class DopNetLoader:
         for person, gestures in self.data.items():
             for gesture_idx, reps in enumerate(gestures):
 
+                gesture_name = GESTURE_NAMES[gesture_idx]
+
                 for rep in reps:
                     spec = rep
 
@@ -87,25 +94,25 @@ class DopNetLoader:
                             raise ValueError('Unknown mode')
                         
                     X.append(spec.flatten())
-                    y.append(f'{person}_{gesture_idx}')
+                    y.append(gesture_name)
 
         X = np.array(X)
         y = np.array(y)
         return X, y
     
-    def plot_spectrogram(self, person, gesture, rep, mode="magnitude"):
+    def plot_spectrogram(self, person, gesture, rep, mode='magnitude'):
         spec = self.data[person][gesture][rep]
 
         if np.iscomplexobj(spec):
-            if mode == "magnitude":
+            if mode == 'magnitude':
                 spec = np.abs(spec)
-            elif mode == "real":
+            elif mode == 'real':
                 spec = spec.real
-            elif mode == "imag":
+            elif mode == 'imag':
                 spec = spec.imag
 
         plt.figure(figsize=(10,4))
         plt.imshow(spec, aspect='auto', cmap='viridis')
-        plt.title(f"Person {person} | Gesture {gesture} | Rep {rep}")
+        plt.title(f'Person {person} | Gesture {gesture} | Rep {rep}')
         plt.colorbar()
         plt.show()
