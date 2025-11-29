@@ -1,8 +1,23 @@
+# Python cache
 __pycache__/
 *.pyc
-.vscode/
+*.pyo
+*.pyd
+
+# Jupyter
 .ipynb_checkpoints/
-output.dat
-DATA
+.ipynb_checkpoints/
+
+# IDE/editor configs
+.vscode/
+.idea/
+
+# System files
 .DS_Store
+
+# Build artifacts
 *.egg-info/
+
+# Project-specific
+DATA/
+output.dat
