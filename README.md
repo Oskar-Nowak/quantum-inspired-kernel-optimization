@@ -32,6 +32,7 @@ Core libraries include:
 
 - numpy
 - scipy
+- seaborn
 - scikit-learn
 - matplotlib
 - jupyter / ipykernel
