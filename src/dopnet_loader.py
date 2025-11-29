@@ -8,7 +8,7 @@ GESTURE_NAMES = ["Wave", "Pinch", "Swipe", "Click"]
 
 
 class DopNetLoader:
-    def __init__(self, root_dir):
+    def __init__(self, root_dir: str):
         self.root_dir = root_dir
         self.data = {}
         self.labels = {}
@@ -45,7 +45,7 @@ class DopNetLoader:
 
         self.data[person] = gestures
 
-    def _normalize_shape(self, target_shape=(256, 256)):
+    def _normalize_shape(self, target_shape: tuple = (256, 256)):
         new_data = {}
 
         for person, gestures in self.data.items():
@@ -70,10 +70,15 @@ class DopNetLoader:
     #  PUBLIC API
     # ---------------------------
 
-    def get_raw_data(self):
+    def load_normalized(self, target_shape: tuple = (256, 256)) -> dict:
+        """
+        Loads the Dop-Net dataset, and normalize the data to the shame shape.
+        """
+        self._load_all()
+        self._normalize_shape(target_shape)
         return self.data
-    
-    def to_feature_matrix(self, mode='magnitude'):
+
+    def to_feature_matrix(self, mode: str = 'magnitude'):
         X = list()
         y = list()
 
@@ -100,7 +105,7 @@ class DopNetLoader:
         y = np.array(y)
         return X, y
     
-    def plot_spectrogram(self, person, gesture, rep, mode='magnitude'):
+    def plot_spectrogram(self, person, gesture, rep, mode: str = 'magnitude'):
         spec = self.data[person][gesture][rep]
 
         if np.iscomplexobj(spec):
