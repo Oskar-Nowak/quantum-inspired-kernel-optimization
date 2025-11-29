@@ -5,3 +5,4 @@ __pycache__/
 output.dat
 DATA
 .DS_Store
+*.egg-info/

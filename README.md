@@ -13,25 +13,30 @@ git clone https://github.com/Oskar-Nowak/quantum-inspired-kernel-optimization.gi
 cd quantum-inspired-kernel-optimization
 ```
 
-Install dependencies:
+Install the project using the pyproject.toml configuration:
 
 ```bash
-pip install -r requirements.txt
+pip install .
+```
+
+Alternatively, for development mode:
+
+```bash
+pip install -e .
 ```
 
 ## 🛠️ Requirements
 
-The project uses the following core dependencies:
+All dependencies are now managed through pyproject.toml.
+Core libraries include:
 
-```
-matplotlib==3.10.7
-numpy==2.3.1
-scikit-learn==1.7.2
-scipy==1.16.3
-seaborn==0.13.2
-jupyter>=1.0
-ipykernel>=6.0
-```
+- numpy
+- scipy
+- scikit-learn
+- matplotlib
+- jupyter / ipykernel
+
+To view exact versions, check the [project] → dependencies section inside pyproject.toml.
 
 ## 📌 Notes
 
