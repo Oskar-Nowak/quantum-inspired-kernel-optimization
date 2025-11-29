@@ -4,8 +4,6 @@ import matplotlib.pyplot as plt
 from scipy.io import loadmat
 from scipy.ndimage import zoom
 
-GESTURE_NAMES = ["Wave", "Pinch", "Swipe", "Click"]
-
 
 class DopNetLoader:
     def __init__(self, root_dir: str):
@@ -66,10 +64,6 @@ class DopNetLoader:
 
         self.data = new_data
 
-    # ---------------------------
-    #  PUBLIC API
-    # ---------------------------
-
     def load_normalized(self, target_shape: tuple = (256, 256)) -> dict:
         """
         Loads the Dop-Net dataset, and normalize the data to the shame shape.
@@ -77,47 +71,3 @@ class DopNetLoader:
         self._load_all()
         self._normalize_shape(target_shape)
         return self.data
-
-    def to_feature_matrix(self, mode: str = 'magnitude'):
-        X = list()
-        y = list()
-
-        for person, gestures in self.data.items():
-            for gesture_idx, reps in enumerate(gestures):
-
-                gesture_name = GESTURE_NAMES[gesture_idx]
-
-                for rep in reps:
-                    spec = rep
-
-                    if np.iscomplexobj(spec):
-                        if mode == 'magnitude':
-                            spec = np.abs(spec)
-                        elif mode == 'realimag':
-                            spec = np.stack([spec.real, spec.imag], axis=-1)
-                        else:
-                            raise ValueError('Unknown mode')
-                        
-                    X.append(spec.flatten())
-                    y.append(gesture_name)
-
-        X = np.array(X)
-        y = np.array(y)
-        return X, y
-    
-    def plot_spectrogram(self, person, gesture, rep, mode: str = 'magnitude'):
-        spec = self.data[person][gesture][rep]
-
-        if np.iscomplexobj(spec):
-            if mode == 'magnitude':
-                spec = np.abs(spec)
-            elif mode == 'real':
-                spec = spec.real
-            elif mode == 'imag':
-                spec = spec.imag
-
-        plt.figure(figsize=(10,4))
-        plt.imshow(spec, aspect='auto', cmap='viridis')
-        plt.title(f'Person {person} | Gesture {gesture} | Rep {rep}')
-        plt.colorbar()
-        plt.show()
