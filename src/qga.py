@@ -19,6 +19,10 @@ class QGA:
         kernel="rbf",
         verbose_logging=True,
         output_file="output.dat",
+        min_C = -3,
+        max_C = 3,
+        min_gamma = -4,
+        max_gamma = 1,
     ):
         self.X_train = X_train
         self.y_train = y_train
@@ -49,6 +53,11 @@ class QGA:
         self.best_chrom = np.empty([self.generation_max], dtype=int)
 
         self.generation = 0
+
+        self.min_C = min_C
+        self.max_C = max_C
+        self.min_gamma = min_gamma
+        self.max_gamma = max_gamma
 
         self.history = []
 
@@ -97,8 +106,8 @@ class QGA:
             C_bits = self.chromosome[i, 1:half+1]
             gamma_bits = self.chromosome[i, half+1:self.genome_length + 1]
 
-            C = self.decode_param(C_bits, -3, 3)
-            gamma = self.decode_param(gamma_bits, -4, 1)
+            C = self.decode_param(C_bits, self.min_C, self.max_C)
+            gamma = self.decode_param(gamma_bits, self.min_gamma, self.max_gamma)
 
             model = SVC(kernel=self.kernel, C=C, gamma=gamma)
             scores = cross_val_score(model, self.X_train, self.y_train, cv=5)
