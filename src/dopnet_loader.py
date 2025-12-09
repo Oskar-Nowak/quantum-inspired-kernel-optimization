@@ -51,12 +51,12 @@ class DopNetLoader:
             for reps in gestures:
                 new_reps = []
                 for spec in reps:
-                    spec_mag = np.abs(spec)
+                    # spec_mag = np.abs(spec)
 
-                    zoom_h = target_shape[0] / spec_mag.shape[0]
-                    zoom_w = target_shape[1] / spec_mag.shape[1]
+                    zoom_h = target_shape[0] / spec.shape[0]
+                    zoom_w = target_shape[1] / spec.shape[1]
 
-                    spec_norm = zoom(spec_mag, (zoom_h, zoom_w))
+                    spec_norm = zoom(spec, (zoom_h, zoom_w))
                     new_reps.append(spec_norm)
 
                 new_gestures.append(new_reps)
