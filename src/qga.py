@@ -1,9 +1,9 @@
 import numpy as np
 import math
+import random
 from sklearn.svm import SVC
 from sklearn.model_selection import cross_val_score
 import matplotlib.pyplot as plt
-
 
 class QGA:
     def __init__(
@@ -13,16 +13,14 @@ class QGA:
         population_size=30,
         genome_length=16,
         generations=100,
-        p_alpha=0.5,
-        pop_mutation_rate=0.05,
-        mutation_rate=0.01,
+        mutation_rate=0.01,  
         kernel="rbf",
         verbose_logging=True,
         output_file="output.dat",
-        min_C = -3,
-        max_C = 3,
-        min_gamma = -4,
-        max_gamma = 1,
+        min_C=-3,
+        max_C=3,
+        min_gamma=-4,
+        max_gamma=1,
     ):
         self.X_train = X_train
         self.y_train = y_train
@@ -30,34 +28,34 @@ class QGA:
         self.N = population_size
         self.Genome = genome_length
         self.generation_max = generations
-        self.P_ALPHA = p_alpha
-        self.POP_MUTATION_RATE = pop_mutation_rate
         self.MUTATION_RATE = mutation_rate
         self.kernel = kernel
         self.verbose_logging = verbose_logging
         self.output_file = output_file
 
-        self.pop_size = self.N + 1
-        self.genome_length = self.Genome + 1
-        self.top_bottom = 3
+        # Parametry dynamicznego kąta rotacji (zgodnie z teorią Improved QGA)
+        self.theta_min = 0.01 * np.pi
+        self.theta_max = 0.05 * np.pi
 
-        self.QuBitZero = np.array([1.0, 0.0])
-        self.AlphaBeta = np.empty([self.top_bottom])
+        self.pop_size = self.N
+        # Przechowujemy amplitudy [alpha, beta] dla każdego genu
+        # Wymiary: [populacja, długość_genomu, 2]
+        self.qpv = np.empty([self.pop_size, self.Genome, 2])
+        
+        # Zmierzone chromosomy (binarne)
+        self.chromosome = np.empty([self.pop_size, self.Genome], dtype=int)
+        
         self.fitness = np.empty([self.pop_size])
-        self.probability = np.empty([self.pop_size])
-
-        self.qpv = np.empty([self.pop_size, self.genome_length, self.top_bottom])
-        self.nqpv = np.empty([self.pop_size, self.genome_length, self.top_bottom])
-
-        self.chromosome = np.empty([self.pop_size, self.genome_length], dtype=int)
-        self.best_chrom = np.empty([self.generation_max], dtype=int)
-
+        self.best_chrom_history = np.empty([self.generation_max])
+        
         self.generation = 0
-
         self.min_C = min_C
         self.max_C = max_C
         self.min_gamma = min_gamma
         self.max_gamma = max_gamma
+        
+        self.best_global_fitness = -1
+        self.best_global_chromosome = None
 
         self.history = []
 
@@ -65,150 +63,215 @@ class QGA:
             pass
 
     def init_population(self):
-        r2 = math.sqrt(2.0)
-        h = np.array([[1 / r2, 1 / r2], [1 / r2, -1 / r2]])
-        rot = np.empty([2, 2])
-
-        for i in range(1, self.pop_size):
-            for j in range(1, self.genome_length):
-                theta = math.radians(np.random.uniform(0, 1) * 90)
-
-                rot[0, 0] = math.cos(theta)
-                rot[0, 1] = -math.sin(theta)
-                rot[1, 0] = math.sin(theta)
-                rot[1, 1] = math.cos(theta)
-
-                self.AlphaBeta[0] = rot[0, 0] * (h[0][0] * self.QuBitZero[0]) + rot[0, 1] * (h[0][1] * self.QuBitZero[1])
-                self.AlphaBeta[1] = rot[1, 0] * (h[1][0] * self.QuBitZero[0]) + rot[1, 1] * (h[1][1] * self.QuBitZero[1])
-
-                self.qpv[i, j, 0] = np.around(2 * float(self.AlphaBeta[0]) ** 2, 2)
-                self.qpv[i, j, 1] = np.around(2 * float(self.AlphaBeta[1]) ** 2, 2)
+        # Inicjalizacja w stanie superpozycji: alpha = beta = 1/sqrt(2)
+        # Oznacza to 50% szans na 0 i 50% szans na 1
+        r2 = 1 / math.sqrt(2.0)
+        self.qpv[:, :, 0] = r2  # Alpha
+        self.qpv[:, :, 1] = r2  # Beta
 
     def measure(self):
-        for i in range(1, self.pop_size):
-            for j in range(1, self.genome_length):
-                if self.P_ALPHA <= self.qpv[i, j, 0]:
-                    self.chromosome[i, j] = 0
-                else:
+        """
+        Dokonuje kolapsu funkcji falowej.
+        Dla każdego qubitu losujemy liczbę [0,1]. 
+        Jeśli losowa < |beta|^2 -> stan 1, w przeciwnym razie stan 0.
+        """
+        for i in range(self.pop_size):
+            for j in range(self.Genome):
+                # Prawdopodobieństwo stanu |1> to |beta|^2
+                prob_one = self.qpv[i, j, 1] ** 2
+                if np.random.rand() < prob_one:
                     self.chromosome[i, j] = 1
+                else:
+                    self.chromosome[i, j] = 0
 
     def decode_param(self, bits, low, high):
+        """Dekoduje ciąg bitów na wartość rzeczywistą w skali logarytmicznej"""
         bit_str = ''.join(str(b) for b in bits)
+        if not bit_str: return 10**low 
         int_val = int(bit_str, 2)
-        normalized = int_val / (2 ** len(bits) - 1)
+        max_val = (2 ** len(bits)) - 1
+        normalized = int_val / max_val if max_val > 0 else 0
+        # Skala logarytmiczna (np. 10^-3 do 10^3)
         return 10 ** (low + normalized * (high - low))
 
     def evaluate_fitness(self):
         fitness_total = 0
+        current_best_fitness = -1
+        current_best_idx = -1
 
-        for i in range(1, self.pop_size):
-            half = self.genome_length // 2
-            C_bits = self.chromosome[i, 1:half+1]
-            gamma_bits = self.chromosome[i, half+1:self.genome_length + 1]
+        for i in range(self.pop_size):
+            half = self.Genome // 2
+            C_bits = self.chromosome[i, 0:half]
+            gamma_bits = self.chromosome[i, half:]
 
             C = self.decode_param(C_bits, self.min_C, self.max_C)
             gamma = self.decode_param(gamma_bits, self.min_gamma, self.max_gamma)
 
             model = SVC(kernel=self.kernel, C=C, gamma=gamma)
-            scores = cross_val_score(model, self.X_train, self.y_train, cv=5)
+            scores = cross_val_score(model, self.X_train, self.y_train, cv=3, n_jobs=-1)
+            
+            score = np.mean(scores) * 100
+            self.fitness[i] = score
+            fitness_total += score
 
-            self.fitness[i] = np.mean(scores) * 100
-            fitness_total += self.fitness[i]
+            if score > current_best_fitness:
+                current_best_fitness = score
+                current_best_idx = i
 
             if self.verbose_logging:
-                print(
-                    f"[Gen {self.generation}] Chromosome {i}:"
-                    f" C={C:.5f}, gamma={gamma:.5f}, fitness={self.fitness[i]:.2f}"
-                )
+                print(f"[Gen {self.generation}] Indiv {i}: C={C:.4f}, g={gamma:.4f}, acc={score:.2f}%")
 
-        avg_fitness = fitness_total / self.N
-        best_idx = np.argmax(self.fitness[1:self.N + 1]) + 1
-        self.best_chrom[self.generation] = best_idx
+        # Aktualizacja globalnego najlepszego rozwiązania
+        if current_best_fitness > self.best_global_fitness:
+            self.best_global_fitness = current_best_fitness
+            self.best_global_chromosome = self.chromosome[current_best_idx].copy()
+
+        avg_fitness = fitness_total / self.pop_size
+        self.best_chrom_history[self.generation] = current_best_fitness
 
         if self.verbose_logging:
-            print(f"→ Generation {self.generation}: mean={avg_fitness:.3f}, best={self.fitness[best_idx]:.3f}\n")
+            print(f"--> Gen {self.generation} Stats: Avg={avg_fitness:.2f}%, Best={current_best_fitness:.2f}%")
 
-        self.history.append(
-            {
-                'generation': self.generation,
-                'mean_fitness': avg_fitness,
-                'best_fitness': self.fitness[best_idx],
-                'best_index': best_idx,
-            }
-        )
+        self.history.append({
+            'generation': self.generation,
+            'mean_fitness': avg_fitness,
+            'best_fitness': current_best_fitness
+        })
         
         with open(self.output_file, "a") as f:
-            f.write(f"{self.generation} {avg_fitness}\n")
+            f.write(f"{self.generation} {avg_fitness} {current_best_fitness}\n")
+
+    def _rotation_angle(self):
+        """
+        Implementacja Dynamicznego Kąta Rotacji (Improved QGA).
+        Kąt maleje liniowo wraz z liczbą generacji, co pozwala na
+        eksplorację na początku i eksploatację na końcu.
+        """
+        ratio = self.generation / self.generation_max
+        # Wzór liniowy: theta zmienia się od theta_max do theta_min
+        current_theta = self.theta_max - (self.theta_max - self.theta_min) * ratio
+        return current_theta
 
     def rotate(self):
-        rot = np.empty([2, 2])
+        """Aktualizacja bramek kwantowych (obrót w stronę najlepszego osobnika)"""
+        if self.best_global_chromosome is None:
+            return
 
-        best = int(self.best_chrom[self.generation])
+        delta_theta_mag = self._rotation_angle()
+        
+        for i in range(self.pop_size):
+            for j in range(self.Genome):
+                # Strategia Lookup Table:
+                # Jeśli bit osobnika różni się od bitu najlepszego globalnie -> obróć w jego stronę
+                # Jeśli bity są takie same -> nie obracaj (lub mały obrót)
+                
+                best_bit = self.best_global_chromosome[j]
+                curr_bit = self.chromosome[i, j]
+                
+                # Znak obrotu
+                sign = 0
+                if curr_bit == 0 and best_bit == 1:
+                    sign = 1 # Zwiększamy prawdopodobieństwo 1
+                elif curr_bit == 1 and best_bit == 0:
+                    sign = -1 # Zwiększamy prawdopodobieństwo 0 (czyli zmniejszamy alpha)
+                
+                if sign != 0:
+                    theta = sign * delta_theta_mag
+                    
+                    alpha = self.qpv[i, j, 0]
+                    beta = self.qpv[i, j, 1]
+                    
+                    # Macierz rotacji (Wzór 2.16 z pracy)
+                    new_alpha = alpha * math.cos(theta) - beta * math.sin(theta)
+                    new_beta  = alpha * math.sin(theta) + beta * math.cos(theta)
+                    
+                    self.qpv[i, j, 0] = new_alpha
+                    self.qpv[i, j, 1] = new_beta
 
-        for i in range(1, self.pop_size):
-            for j in range(1, self.genome_length):
-                if self.fitness[i] < self.fitness[best]:
+    def convergence_gate(self):
+        """
+        Implementacja Bramki Konwergencji (Quantum Convergence Gate).
+        Zapobiega przedwczesnej zbieżności do czystych stanów |0> lub |1>.
+        """
+        epsilon = 0.02 # Próg tolerancji
+        mutation_prob = self.MUTATION_RATE
+        
+        for i in range(self.pop_size):
+            if np.random.rand() < mutation_prob:
+                # POPRAWKA: Mutacja (Pauli-X) na konkretnym genie
+                # Losujemy index genu (qubitu) do mutacji
+                idx = np.random.randint(0, self.Genome)
+                
+                # Zamieniamy alpha z beta W TYM SAMYM qubicie
+                temp = self.qpv[i, idx, 0]
+                self.qpv[i, idx, 0] = self.qpv[i, idx, 1]
+                self.qpv[i, idx, 1] = temp
+                continue
 
-                    if self.chromosome[i, j] == 0 and self.chromosome[best, j] == 1:
-                        delta_theta = 0.0785398163
-                    elif self.chromosome[i, j] == 1 and self.chromosome[best, j] == 0:
-                        delta_theta = -0.0785398163
+            # Reszta logiki zbieżności (bez zmian)
+            for j in range(self.Genome):
+                alpha_sq = self.qpv[i, j, 0] ** 2
+                
+                if alpha_sq < epsilon or alpha_sq > (1 - epsilon):
+                    if self.qpv[i, j, 0] > 0:
+                        self.qpv[i, j, 0] = math.sqrt(1 - epsilon)
+                        self.qpv[i, j, 1] = math.sqrt(epsilon)
                     else:
-                        continue
-
-                    rot[0, 0] = math.cos(delta_theta)
-                    rot[0, 1] = -math.sin(delta_theta)
-                    rot[1, 0] = math.sin(delta_theta)
-                    rot[1, 1] = math.cos(delta_theta)
-
-                    self.nqpv[i, j, 0] = rot[0, 0] * self.qpv[i, j, 0] + rot[0, 1] * self.qpv[i, j, 1]
-                    self.nqpv[i, j, 1] = rot[1, 0] * self.qpv[i, j, 0] + rot[1, 1] * self.qpv[i, j, 1]
-
-                    self.qpv[i, j, 0] = round(self.nqpv[i, j, 0], 2)
-                    self.qpv[i, j, 1] = round(1 - self.nqpv[i, j, 0], 2)
-
-    def mutate(self):
-        for i in range(1, self.pop_size):
-            up = np.random.randint(0, 101) / 100
-            if up <= self.POP_MUTATION_RATE:
-                for j in range(1, self.genome_length):
-                    um = np.random.randint(0, 101) / 100
-                    if um <= self.MUTATION_RATE:
-                        self.nqpv[i, j, 0] = self.qpv[i, j, 1]
-                        self.nqpv[i, j, 1] = self.qpv[i, j, 0]
-                    else:
-                        self.nqpv[i, j, :] = self.qpv[i, j, :]
-            else:
-                for j in range(1, self.genome_length):
-                    self.nqpv[i, j, :] = self.qpv[i, j, :]
-
-        self.qpv[:] = self.nqpv[:]
+                        self.qpv[i, j, 0] = math.sqrt(epsilon)
+                        self.qpv[i, j, 1] = math.sqrt(1 - epsilon)
 
     def plot_output(self):
-        data = np.loadtxt(self.output_file)
-        x = data[:, 0]
-        y = data[:, 1]
-        plt.plot(x, y)
-        plt.xlabel("Generation")
-        plt.ylabel("Fitness average")
-        plt.xlim(0, self.generation_max)
+        gens = [x['generation'] for x in self.history]
+        means = [x['mean_fitness'] for x in self.history]
+        bests = [x['best_fitness'] for x in self.history]
+        
+        plt.figure(figsize=(10, 6))
+        plt.plot(gens, means, label="Średnia dokładność", linestyle='--')
+        plt.plot(gens, bests, label="Najlepsza dokładność", linewidth=2)
+        plt.xlabel("Generacja")
+        plt.ylabel("Dokładność (Accuracy %)")
+        plt.title(f"Zbieżność QGA-SVM (Max: {max(bests):.2f}%)")
+        plt.legend()
+        plt.grid(True)
         plt.show()
 
     def run(self):
-        print("QUANTUM GENETIC ALGORITHM\n")
+        print("--- STARTING IMPROVED QUANTUM GENETIC ALGORITHM (IQGA-SVM) ---\n")
 
         self.generation = 0
         self.init_population()
         self.measure()
         self.evaluate_fitness()
 
+        # POPRAWKA: Zmieniono warunek pętli z '<' na '< ... - 1'
+        # Ponieważ generacja 0 została zrobiona przed pętlą, musimy zrobić 
+        # jeszcze (max - 1) kroków, aby dojść do ostatniego indeksu.
         while self.generation < self.generation_max - 1:
-            if self.verbose_logging:
-                print(f"=== GENERATION {self.generation+1} ===")
-
-            self.rotate()
-            self.mutate()
-
             self.generation += 1
+            
+            # 1. Rotacja w stronę najlepszego
+            self.rotate()
+            
+            # 2. Bramka Konwergencji (Mutation / Convergence Gate)
+            self.convergence_gate()
+            
+            # 3. Pomiar i Ewaluacja
             self.measure()
             self.evaluate_fitness()
+            
+        print(f"\nOptimization Finished.")
+        print(f"Best Accuracy: {self.best_global_fitness:.2f}%")
+        
+        # Decode best params
+        if self.best_global_chromosome is not None:
+            half = self.Genome // 2
+            best_C_bits = self.best_global_chromosome[0:half]
+            best_gamma_bits = self.best_global_chromosome[half:]
+            best_C = self.decode_param(best_C_bits, self.min_C, self.max_C)
+            best_gamma = self.decode_param(best_gamma_bits, self.min_gamma, self.max_gamma)
+            
+            print(f"Best Parameters: C={best_C:.5f}, Gamma={best_gamma:.5f}")
+            return best_C, best_gamma
+        else:
+            print("No improvement found.")
+            return None, None
