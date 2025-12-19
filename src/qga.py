@@ -14,13 +14,15 @@ class QGA:
         genome_length=16,
         generations=100,
         mutation_rate=0.01,  
-        kernel="rbf",
+        kernel='rbf',
         verbose_logging=True,
-        output_file="output.dat",
+        output_file='output.dat',
         min_C=-3,
         max_C=3,
         min_gamma=-4,
         max_gamma=1,
+        theta_min = 0.01,
+        theta_max = 0.05,
     ):
         self.X_train = X_train
         self.y_train = y_train
@@ -33,8 +35,8 @@ class QGA:
         self.verbose_logging = verbose_logging
         self.output_file = output_file
 
-        self.theta_min = 0.01 * np.pi
-        self.theta_max = 0.05 * np.pi
+        self.theta_min = theta_min * np.pi
+        self.theta_max = theta_max * np.pi
 
         self.pop_size = self.N
         self.qpv = np.empty([self.pop_size, self.Genome, 2])
@@ -55,7 +57,7 @@ class QGA:
 
         self.history = []
 
-        with open(self.output_file, "w"):
+        with open(self.output_file, 'w'):
             pass
 
     def init_population(self):
@@ -100,7 +102,7 @@ class QGA:
             gamma = self.decode_param(gamma_bits, self.min_gamma, self.max_gamma)
 
             model = SVC(kernel=self.kernel, C=C, gamma=gamma)
-            scores = cross_val_score(model, self.X_train, self.y_train, cv=3, n_jobs=-1)
+            scores = cross_val_score(model, self.X_train, self.y_train, cv=5, n_jobs=-1)
             
             score = np.mean(scores) * 100
             self.fitness[i] = score
@@ -111,7 +113,7 @@ class QGA:
                 current_best_idx = i
 
             if self.verbose_logging:
-                print(f"[Gen {self.generation}] Indiv {i}: C={C:.4f}, g={gamma:.4f}, acc={score:.2f}%")
+                print(f'[Gen {self.generation}] Indiv {i}: C={C:.4f}, g={gamma:.7f}, acc={score:.2f}%')
 
         if current_best_fitness > self.best_global_fitness:
             self.best_global_fitness = current_best_fitness
@@ -121,7 +123,7 @@ class QGA:
         self.best_chrom_history[self.generation] = current_best_fitness
 
         if self.verbose_logging:
-            print(f"--> Gen {self.generation} Stats: Avg={avg_fitness:.2f}%, Best={current_best_fitness:.2f}%")
+            print(f'--> Gen {self.generation} Stats: Avg={avg_fitness:.2f}%, Best={current_best_fitness:.2f}%')
 
         self.history.append({
             'generation': self.generation,
@@ -129,8 +131,8 @@ class QGA:
             'best_fitness': current_best_fitness
         })
         
-        with open(self.output_file, "a") as f:
-            f.write(f"{self.generation} {avg_fitness} {current_best_fitness}\n")
+        with open(self.output_file, 'a') as f:
+            f.write(f'{self.generation} {avg_fitness} {current_best_fitness}\n')
 
     def _rotation_angle(self):
         """
@@ -178,7 +180,7 @@ class QGA:
         Implementacja Bramki Konwergencji (Quantum Convergence Gate).
         Zapobiega przedwczesnej zbieżności do czystych stanów |0> lub |1>.
         """
-        epsilon = 0.02 
+        epsilon = 0.003 
         mutation_prob = self.MUTATION_RATE
         
         for i in range(self.pop_size):
@@ -201,23 +203,26 @@ class QGA:
                         self.qpv[i, j, 0] = math.sqrt(epsilon)
                         self.qpv[i, j, 1] = math.sqrt(1 - epsilon)
 
-    def plot_output(self):
+    def plot_output(self, save_as_file = False, include_title = True):
         gens = [x['generation'] for x in self.history]
         means = [x['mean_fitness'] for x in self.history]
         bests = [x['best_fitness'] for x in self.history]
         
         plt.figure(figsize=(10, 6))
-        plt.plot(gens, means, label="Średnia dokładność", linestyle='--')
-        plt.plot(gens, bests, label="Najlepsza dokładność", linewidth=2)
-        plt.xlabel("Generacja")
-        plt.ylabel("Dokładność (Accuracy %)")
-        plt.title(f"Zbieżność QGA-SVM (Max: {max(bests):.2f}%)")
+        plt.plot(gens, means, label='Średnia dokładność', linestyle='--')
+        plt.plot(gens, bests, label='Najwyższa dokładność', linewidth=2)
+        plt.xlabel('Generacja')
+        plt.ylabel('Dokładność [%]')
+        if include_title:
+            plt.title(f'Zbieżność IQGA-SVM (Max: {max(bests):.2f}%)')
         plt.legend()
         plt.grid(True)
+        if save_as_file:
+            plt.savefig('iqga_svm_convergence.png', dpi=300, bbox_inches='tight')
         plt.show()
 
     def run(self):
-        print("--- STARTING IMPROVED QUANTUM GENETIC ALGORITHM (IQGA-SVM) ---\n")
+        print('--- STARTING IMPROVED QUANTUM GENETIC ALGORITHM (IQGA-SVM) ---\n')
 
         self.generation = 0
         self.init_population()
@@ -233,8 +238,8 @@ class QGA:
             self.measure()
             self.evaluate_fitness()
             
-        print(f"\nOptimization Finished.")
-        print(f"Best Accuracy: {self.best_global_fitness:.2f}%")
+        print(f'\nOptimization Finished.')
+        print(f'Best Accuracy: {self.best_global_fitness:.2f}%')
         
         if self.best_global_chromosome is not None:
             half = self.Genome // 2
@@ -243,8 +248,8 @@ class QGA:
             best_C = self.decode_param(best_C_bits, self.min_C, self.max_C)
             best_gamma = self.decode_param(best_gamma_bits, self.min_gamma, self.max_gamma)
             
-            print(f"Best Parameters: C={best_C:.5f}, Gamma={best_gamma:.5f}")
+            print(f'Best Parameters: C={best_C:.5f}, Gamma={best_gamma:.5f}')
             return best_C, best_gamma
         else:
-            print("No improvement found.")
+            print('No improvement found.')
             return None, None
