@@ -51,7 +51,7 @@ class Preprocessor():
         self._fitted = True
         return X_pca
 
-    def plot_elbow(self, X, max_components=300, save_as_file = False, include_title = True):
+    def plot_elbow(self, X, max_components=300, save_as_file = False, include_title = True, save_as_csv = False):
         print('=== PCA Elbow Method ===')
 
         X_scaled = self.scaler.fit_transform(X)
@@ -94,5 +94,14 @@ class Preprocessor():
 
         if save_as_file:
             plt.savefig('pca_elbow.png', dpi=300, bbox_inches='tight')
+
+        if save_as_csv:
+            import pandas as pd
+            df_pca = pd.DataFrame({
+                'Number_of_Components': np.arange(1, len(cumulative) + 1),
+                'Cumulative_Variance': cumulative
+            })
+            df_pca.to_csv('pca_elbow_data.csv', index=False)
+            print("Dane wykresu łokcia zapisane do pca_elbow_data.csv!")
 
         plt.show()
